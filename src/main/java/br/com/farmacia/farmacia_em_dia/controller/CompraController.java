@@ -3,6 +3,7 @@ package br.com.farmacia.farmacia_em_dia.controller;
 
 
 
+import br.com.farmacia.farmacia_em_dia.Alerta.AlertaDTO;
 import br.com.farmacia.farmacia_em_dia.model.Cliente;
 import br.com.farmacia.farmacia_em_dia.model.Compra;
 import br.com.farmacia.farmacia_em_dia.repository.ClienteRepository;
@@ -65,10 +66,35 @@ public class CompraController {
                         .append(dataFim)
                         .append(")\n");
             }
+
         }
         if (sb.isEmpty()) {
             return "Nenhum medicamento controlado encontrado para o cliente.";
         }
         return sb.toString();
     }
+    @GetMapping("/alertas")
+    public List<AlertaDTO> listarAlertasGerais() {
+        List<Compra> compras = compraRepository.findAll();
+
+        return compras.stream()
+                .filter(c -> c.getProduto().isControlado())
+                .map(c -> {
+                    int diasRestantes = (int) (c.getQuantidade() / (double) c.getDosagemPorDia());
+                    LocalDate dataFim = c.getDataCompra().plusDays(diasRestantes);
+                    long diasParaFim = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), dataFim);
+
+                    return new AlertaDTO(
+                            c.getProduto().getNome(),
+                            c.getCliente().getId(),
+                            c.getCliente().getNome(),
+                            diasParaFim,
+                            dataFim
+                    );
+                })
+                .filter(alerta -> alerta.getDiasRestantes() <= 7)
+                .toList();
+    }
+
+
 }

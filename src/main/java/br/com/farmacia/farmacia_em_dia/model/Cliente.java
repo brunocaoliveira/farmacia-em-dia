@@ -18,6 +18,7 @@ public class Cliente {
 
     private String nome;
     private String telefone;
+    private String cpf;
     private LocalDate nascimento;
 
     public Long getId() {
@@ -50,5 +51,13 @@ public class Cliente {
 
     public void setNascimento(LocalDate nascimento) {
         this.nascimento = nascimento;
+    }
+
+    public String getCpf() {
+        return cpf;
+    }
+
+    public void setCpf(String cpf) {
+        this.cpf = cpf;
     }
 }
