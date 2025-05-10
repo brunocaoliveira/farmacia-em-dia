@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
-
 import java.time.LocalDate;
 
 @Entity
@@ -21,8 +20,12 @@ public class Compra {
     private Produto produto;
 
     private LocalDate dataCompra;
-    private int quantidade;
-    private int dosagemPorDia;
+    private Integer quantidade;  // Mudado de int para Integer
+    private Integer dosagemPorDia;
+
+    // Construtor padrão
+    public Compra() {
+    }
 
     public Long getId() {
         return id;
@@ -56,19 +59,19 @@ public class Compra {
         this.dataCompra = dataCompra;
     }
 
-    public int getQuantidade() {
+    public Integer getQuantidade() {  // Mudado de int para Integer
         return quantidade;
     }
 
-    public void setQuantidade(int quantidade) {
+    public void setQuantidade(Integer quantidade) {  // Mudado de int para Integer
         this.quantidade = quantidade;
     }
 
-    public int getDosagemPorDia() {
+    public Integer getDosagemPorDia() {  // Mudado de int para Integer
         return dosagemPorDia;
     }
 
-    public void setDosagemPorDia(int dosagemPorDia) {
+    public void setDosagemPorDia(Integer dosagemPorDia) {  // Mudado de int para Integer
         this.dosagemPorDia = dosagemPorDia;
     }
 }

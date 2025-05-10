@@ -54,6 +54,7 @@ public class ClienteController {
     }
 
 
+
     // DELETE /clientes/{id} — remove um cliente pelo ID
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deletarCliente(@PathVariable Long id) {

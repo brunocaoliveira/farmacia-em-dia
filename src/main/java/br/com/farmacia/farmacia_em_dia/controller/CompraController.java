@@ -1,16 +1,18 @@
 package br.com.farmacia.farmacia_em_dia.controller;
 
-
-
-
+import br.com.farmacia.farmacia_em_dia.CompraDTO.CompraDTO;
 import br.com.farmacia.farmacia_em_dia.Alerta.AlertaDTO;
 import br.com.farmacia.farmacia_em_dia.model.Cliente;
 import br.com.farmacia.farmacia_em_dia.model.Compra;
+import br.com.farmacia.farmacia_em_dia.model.Produto;
 import br.com.farmacia.farmacia_em_dia.repository.ClienteRepository;
 import br.com.farmacia.farmacia_em_dia.repository.CompraRepository;
 import br.com.farmacia.farmacia_em_dia.repository.ProdutoRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -34,61 +36,68 @@ public class CompraController {
 
     // POST /compras — registra uma compra
     @PostMapping
-    public Compra criarCompra(@RequestBody Compra compra) {
-        // garante que a data de compra seja hoje se não for enviada
-        if (compra.getDataCompra() == null) {
-            compra.setDataCompra(LocalDate.now());
+    public ResponseEntity<Compra> criarCompra(@RequestBody CompraDTO dto) {
+        // Validação dos campos obrigatórios
+        if (dto.getClienteId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ID do cliente é obrigatório");
         }
-        return compraRepository.save(compra);
+        if (dto.getProdutoId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ID do produto é obrigatório");
+        }
+        if (dto.getQuantidade() == null || dto.getQuantidade() <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Quantidade deve ser maior que zero");
+        }
+
+        Cliente cliente = clienteRepository.findById(dto.getClienteId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cliente não encontrado"));
+        Produto produto = produtoRepository.findById(dto.getProdutoId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Produto não encontrado"));
+
+        // Validação específica para produtos controlados
+        if (produto.isControlado()) {
+            if (dto.getDosagemPorDia() == null || dto.getDosagemPorDia() <= 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Dosagem por dia deve ser maior que zero para medicamentos de uso contínuo");
+            }
+        }
+
+        Compra compra = new Compra();
+        compra.setCliente(cliente);
+        compra.setProduto(produto);
+        compra.setQuantidade(dto.getQuantidade());
+        compra.setDosagemPorDia(dto.getDosagemPorDia());
+        compra.setDataCompra(dto.getDataCompra() != null ? dto.getDataCompra() : LocalDate.now());
+
+        Compra salva = compraRepository.save(compra);
+        return new ResponseEntity<>(salva, HttpStatus.CREATED);
     }
 
-    // GET /compras — lista todas as compras
+    // GET /compras — lista todas as compras ou compras de um cliente específico
     @GetMapping
-    public List<Compra> listarCompras() {
+    public List<Compra> listarCompras(@RequestParam(required = false) Long clienteId) {
+        if (clienteId != null) {
+            return compraRepository.findByClienteId(clienteId);
+        }
         return compraRepository.findAll();
     }
 
-    // GET /compras/alerta/{clienteId} — retorna dias restantes para o próximo medicamento controlado
+    // GET /compras/alerta/{clienteId} — alertas de um único cliente
     @GetMapping("/alerta/{clienteId}")
-    public String alertaRemedio(@PathVariable Long clienteId) {
-        List<Compra> compras = compraRepository.findByClienteId(clienteId);
+    public List<AlertaDTO> alertaPorCliente(@PathVariable Long clienteId) {
+        Cliente cliente = clienteRepository.findById(clienteId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cliente não encontrado"));
 
-        StringBuilder sb = new StringBuilder();
-        for (Compra compra : compras) {
-            if (compra.getProduto().isControlado()) {
-                int diasRestantes = (int) (compra.getQuantidade() / (double) compra.getDosagemPorDia());
-                LocalDate dataFim = compra.getDataCompra().plusDays(diasRestantes);
-                sb.append("• ")
-                        .append(compra.getProduto().getNome())
-                        .append(" — falta(m) ")
-                        .append(diasRestantes)
-                        .append(" dia(s) (até ")
-                        .append(dataFim)
-                        .append(")\n");
-            }
-
-        }
-        if (sb.isEmpty()) {
-            return "Nenhum medicamento controlado encontrado para o cliente.";
-        }
-        return sb.toString();
-    }
-    @GetMapping("/alertas")
-    public List<AlertaDTO> listarAlertasGerais() {
-        List<Compra> compras = compraRepository.findAll();
-
-        return compras.stream()
-                .filter(c -> c.getProduto().isControlado())
+        return compraRepository.findByClienteId(clienteId).stream()
+                .filter(c -> c.getProduto() != null && c.getProduto().isControlado())
+                .filter(c -> c.getDosagemPorDia() != null && c.getDosagemPorDia() > 0)
                 .map(c -> {
-                    int diasRestantes = (int) (c.getQuantidade() / (double) c.getDosagemPorDia());
+                    Integer diasRestantes = c.getQuantidade() / c.getDosagemPorDia();
                     LocalDate dataFim = c.getDataCompra().plusDays(diasRestantes);
-                    long diasParaFim = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), dataFim);
-
                     return new AlertaDTO(
                             c.getProduto().getNome(),
-                            c.getCliente().getId(),
-                            c.getCliente().getNome(),
-                            diasParaFim,
+                            cliente.getId(),
+                            cliente.getNome(),
+                            diasRestantes,
                             dataFim
                     );
                 })
@@ -96,5 +105,24 @@ public class CompraController {
                 .toList();
     }
 
-
+    // GET /compras/alertas — alertas gerais de todos os clientes
+    @GetMapping("/alertas")
+    public List<AlertaDTO> listarAlertasGerais() {
+        return compraRepository.findAll().stream()
+                .filter(c -> c.getProduto() != null && c.getCliente() != null && c.getProduto().isControlado())
+                .filter(c -> c.getDosagemPorDia() != null && c.getDosagemPorDia() > 0)
+                .map(c -> {
+                    Integer diasRestantes = c.getQuantidade() / c.getDosagemPorDia();
+                    LocalDate dataFim = c.getDataCompra().plusDays(diasRestantes);
+                    return new AlertaDTO(
+                            c.getProduto().getNome(),
+                            c.getCliente().getId(),
+                            c.getCliente().getNome(),
+                            diasRestantes,
+                            dataFim
+                    );
+                })
+                .filter(alerta -> alerta.getDiasRestantes() <= 7)
+                .toList();
+    }
 }
